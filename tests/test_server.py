@@ -19,13 +19,13 @@ class DataTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def test_nine_real_courses_and_nested_folders(self):
+    def test_selected_real_courses_and_nested_folders(self):
         self.store.seed()
         nodes = self.store.nodes()
         courses = [n for n in nodes if n['kind'] == 'course']
-        self.assertEqual(len(courses), 9)
+        self.assertEqual(len(courses), 12)
         self.assertIn('International Trade', [n['title'] for n in courses])
-        self.assertEqual(len([n for n in nodes if n['kind'] == 'folder']), 45)
+        self.assertEqual(len([n for n in nodes if n['kind'] == 'folder']), 60)
         course = next(n for n in courses if n['title'] == 'International Trade')
         topics = next(n for n in nodes if n['parent_id'] == course['id'] and n['title'] == 'Temas')
         topic = next(n for n in nodes if n['parent_id'] == topics['id'] and n['title'] == 'Tema 1')
@@ -111,6 +111,36 @@ class DataTests(unittest.TestCase):
         with self.assertRaises(Problem):
             self.store.chatgpt_document({'path': ['Trade', 'Tema 1'], 'title': 'Nuevo', 'content': 'No guardar'})
         self.assertEqual(before, self.store.nodes())
+
+    def test_schedule_import_backup_and_atomic_failure(self):
+        self.store.seed()
+        course = next(n for n in self.store.nodes() if n['title'] == 'International Trade')
+        self.store.save_schedule({course['id']: {'weekday': 2, 'start': '10:15', 'end': '11:45', 'room': 'Test room'}})
+        before_nodes, before_schedule = self.store.nodes(), self.store.schedule()
+        with self.assertRaises(Problem):
+            self.store.import_schedule({'app':'AulaSchedule','version':1,'add_courses':True,'courses':[{'title':'New test class','weekday':2,'start':'12:00','end':'11:00','room':''}]})
+        self.assertEqual(self.store.nodes(), before_nodes)
+        self.assertEqual(self.store.schedule(), before_schedule)
+        self.store.restore(self.store.backup())
+        self.assertEqual(self.store.schedule(), before_schedule)
+        exam = self.store.chatgpt_document({'kind':'exam','path':['International Trade','Exámenes'],'title':'Test exam','content':'','due_date':'2026-12-15'})
+        self.assertEqual(exam['due_time'], '10:15')
+        manual = self.store.chatgpt_document({'kind':'exam','path':['International Trade','Exámenes'],'title':'Exception exam','content':'','due_date':'2026-12-15','due_time':'11:00'})
+        self.assertEqual(manual['due_time'], '11:00')
+
+    def test_legacy_database_and_backup_preserve_notes(self):
+        note = self.store.create({'kind':'note','title':'Existing note','content':'Do not lose this content'})
+        backup = self.store.backup()
+        backup.pop('schedule')
+        for n in backup['nodes']: n.pop('due_time', None)
+        with self.store.connect() as db:
+            db.execute('ALTER TABLE nodes DROP COLUMN due_time')
+        migrated = Store(self.temp.name)
+        self.assertEqual(migrated.nodes()[0]['content'], note['content'])
+        self.assertEqual(migrated.nodes()[0]['due_time'], '')
+        migrated.restore(backup)
+        self.assertEqual(migrated.nodes()[0]['content'], note['content'])
+        self.assertEqual(migrated.schedule(), {})
 
 
 class HTTPTests(unittest.TestCase):

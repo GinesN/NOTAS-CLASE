@@ -35,4 +35,4 @@ createServer(async (request, response) => {
     response.writeHead(404);
     response.end();
   }
-}).listen(4182, "127.0.0.1");
+}).listen(Number(process.env.AULA_STATIC_PORT || 4182), "127.0.0.1");

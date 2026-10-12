@@ -7,6 +7,7 @@ export type Item = {
   content: string;
   color: string;
   due_date: string;
+  due_time?: string;
   done: boolean;
   pinned: boolean;
   created_at: string;
@@ -25,6 +26,13 @@ export type State = {
   activity: Activity[];
   name: string;
   api_enabled: boolean;
+  schedule: Record<string, ClassSchedule>;
+};
+export type ClassSchedule = {
+  weekday: number;
+  start: string;
+  end: string;
+  room: string;
 };
 export type Auth = {
   authenticated: boolean;

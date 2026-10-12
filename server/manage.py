@@ -19,6 +19,8 @@ def main():
     restore = commands.add_parser("import", help="Reemplazar los datos por una copia compatible")
     restore.add_argument("--file", required=True)
     restore.add_argument("--replace", action="store_true", help="Confirmar que se reemplazarán los datos actuales")
+    schedule = commands.add_parser('import-schedule', help='Incorporar un horario sin reemplazar apuntes')
+    schedule.add_argument('--file', required=True)
     args = parser.parse_args()
     store = Store(os.environ.get("AULA_DATA_DIR", ROOT / ".data"))
     if args.command == "list":
@@ -56,6 +58,12 @@ def main():
             raise Problem("La copia supera 16 MB.")
         store.restore(json.loads(file.read_text(encoding="utf-8")))
         print("Copia restaurada. La contraseña y la clave de conexión actuales se conservan.")
+    elif args.command == 'import-schedule':
+        file = Path(args.file)
+        if file.stat().st_size > 100000:
+            raise Problem('El archivo de horario supera 100 KB.')
+        value = store.import_schedule(json.loads(file.read_text(encoding='utf-8')))
+        print(f'Horario guardado: {len(value)} asignaturas.')
 
 
 if __name__ == "__main__":

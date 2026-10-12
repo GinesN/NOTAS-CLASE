@@ -1,6 +1,6 @@
 # Aula
 
-Tu espacio personal para organizar clases, apuntes, exámenes y lo que quieres recordar. Preparado con las nueve asignaturas de HES-SO que has indicado.
+Tu espacio personal para organizar clases, apuntes, exámenes y lo que quieres recordar. Preparado con las doce asignaturas seleccionadas de HES-SO.
 
 ## Versión GitHub Pages
 
@@ -47,7 +47,7 @@ npm run dev
 
 `dev` escucha en el puerto 4173 y usa **modo local sin contraseña**, como has pedido. Solo acepta conexiones loopback y peticiones del mismo origen. Es adecuado dentro de un entorno de confianza; quien tenga acceso al entorno tiene acceso a los apuntes. No publiques este modo mediante un túnel o proxy.
 
-La primera ejecución prepara tus nueve asignaturas y sus carpetas. Los siguientes arranques conservan todo: no resiembran ni reemplazan datos. La pantalla inicial muestra seis asignaturas; **Ver todas** muestra las nueve.
+La primera ejecución prepara las doce asignaturas seleccionadas y sus carpetas. Los siguientes arranques conservan los datos. La pantalla principal muestra la lista completa; al importar un horario con `add_courses: true`, se incorporan las asignaturas nuevas del archivo.
 
 Para desarrollar, ejecuta `npm run watch` en otra terminal. Reconstruye el frontend al editar; recarga el navegador. Reinicia el servidor si cambias Python.
 
@@ -62,8 +62,25 @@ Para desarrollar, ejecuta `npm run watch` en otra terminal. Reconstruye el front
 7. Management in the Age of AI
 8. International Organizational Behaviour
 9. International Organizations
+10. Global HR Management
+11. Design Thinking for AI and Digital Innovation
+12. English Communication 3
 
 Los nombres oficiales se conservan en la descripción de cada asignatura y en `server/courses.json`. No se han inventado apuntes ni fechas de examen.
+
+## Horario y memoria de estudio
+
+La sección **Horario** guarda una única franja semanal por asignatura: día, inicio, fin y aula opcional. Puedes editar cada fila o importar un JSON con `app: "AulaSchedule"`, `version: 1` y `courses`, una lista con `title`, `weekday` (lunes=1, domingo=0), `start`, `end` y `room`. `add_courses: true` permite incorporar las asignaturas del archivo que falten. La importación actualiza el horario y conserva los apuntes; se valida completa antes de guardar. Los horarios personales se entregan y almacenan fuera del código público.
+
+Al crear un examen dentro de una asignatura se propone la hora de inicio de esa clase. Puedes modificarla o dejarla vacía para una excepción. Si la fecha cae en otro día de la semana, la aplicación lo indica. La hora de fin de la clase no fija automáticamente la duración del examen.
+
+**Memoria → Exportar contexto** genera un Markdown con asignaturas, horario, documentos y registro completo. Puedes compartir ese archivo con ChatGPT al empezar una conversación futura. El registro de actividad no guarda por sí solo el texto de tus preguntas y respuestas: crea un apunte para conservarlas. Aula y ChatGPT no leen ni sincronizan automáticamente sus historiales. Un archivo extenso puede requerir seleccionar los documentos relevantes según el tamaño de contexto de la conversación.
+
+Para incorporar un horario en la versión con servidor:
+
+```sh
+python3 server/manage.py import-schedule --file /ruta/privada/horario.json
+```
 
 ## Cambiar de ordenador
 

@@ -1,4 +1,5 @@
-import type { Activity, Item, Kind, State } from "./model";
+import type { Activity, Item, Kind, State, ClassSchedule } from "./model";
+import { validTime, cleanSchedule, importSchedule } from "./schedule";
 import courses from "../server/courses.json";
 
 export const browserMode = import.meta.env.VITE_STORAGE_MODE === "browser";
@@ -7,6 +8,7 @@ type SavedState = {
   name: string;
   nodes: Item[];
   activity: Activity[];
+  schedule?: Record<string, ClassSchedule>;
 };
 type ObjectData = Record<string, unknown>;
 const kinds: Kind[] = ["course", "folder", "note", "exam"];
@@ -118,6 +120,7 @@ function clean(
     content,
     parent_id: parent as string | null,
     due_date: date(data.due_date ?? ""),
+    due_time: validTime(data.due_time ?? ""),
     done: Boolean(done),
     pinned: Boolean(pinned),
   };
@@ -217,11 +220,11 @@ function seed(): SavedState {
       title: "Bienvenido a tu espacio",
       pinned: true,
       content:
-        "# Todo tiene su lugar\n\nTus nueve asignaturas ya tienen un sitio. Puedes crear más carpetas dentro de cada tema, añadir apuntes y preparar tus exámenes.\n\n## Tus apuntes son tuyos\n\nEsta versión guarda los datos en este navegador, en tu dispositivo. No se publican en GitHub ni se sincronizan automáticamente con otros ordenadores.\n\n## Antes de cambiar de ordenador\n\nDescarga una copia en Ajustes e impórtala en el nuevo navegador. Haz copias periódicas: borrar los datos del navegador también borra esta instalación de Aula.\n\n## Trabaja con ChatGPT\n\nCopia el índice de tus asignaturas desde la sección ChatGPT. Para el guardado automático o sincronizar varios dispositivos necesitas la versión de Aula con servidor.",
+        "# Todo tiene su lugar\n\nTus asignaturas ya tienen un sitio. Puedes crear más carpetas dentro de cada tema, añadir apuntes y preparar tus exámenes.\n\n## Tus apuntes son tuyos\n\nEsta versión guarda los datos en este navegador, en tu dispositivo. No se publican en GitHub ni se sincronizan automáticamente con otros ordenadores.\n\n## Antes de cambiar de ordenador\n\nDescarga una copia en Ajustes e impórtala en el nuevo navegador. Haz copias periódicas: borrar los datos del navegador también borra esta instalación de Aula.\n\n## Trabaja con ChatGPT\n\nCopia el índice de tus asignaturas desde la sección ChatGPT. Para el guardado automático o sincronizar varios dispositivos necesitas la versión de Aula con servidor.",
     },
     false,
   );
-  log(state, "created", "Tus nueve asignaturas y tu espacio de estudio");
+  log(state, "created", "Asignaturas y espacio de estudio");
   return state;
 }
 
@@ -274,6 +277,11 @@ function publicState(state: SavedState): State {
     activity: state.activity.slice(0, 200),
     name: state.name,
     api_enabled: false,
+    schedule: Object.fromEntries(
+      Object.entries(state.schedule || {}).filter(([key]) =>
+        state.nodes.some((n) => n.kind === "course" && n.id === key),
+      ),
+    ),
   };
 }
 
@@ -355,7 +363,9 @@ function restore(raw: unknown, state: SavedState) {
       };
     })
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const schedule = cleanSchedule(backup.schedule ?? {}, nodes);
   state.nodes = nodes;
+  state.schedule = schedule;
   state.activity = history;
   if (
     typeof backup.name === "string" &&
@@ -391,12 +401,72 @@ export async function browserApi<T>(
         name: state.name,
         nodes: state.nodes,
         activity: state.activity,
+        schedule: publicState(state).schedule,
       } as T;
     if (method === "POST" && path === "/restore") {
       restore(body, state);
       return publicState(state) as T;
     }
     if (method === "POST" && path === "/nodes") return create(state, body) as T;
+    if (
+      method === "POST" &&
+      (path === "/schedule" || path === "/schedule/import")
+    ) {
+      if (path === "/schedule/import") {
+        const data = object(body);
+        if (
+          data.app === "AulaSchedule" &&
+          data.version === 1 &&
+          data.add_courses === true &&
+          Array.isArray(data.courses) &&
+          data.courses.length <= 100
+        ) {
+          for (const raw of data.courses) {
+            const row = object(raw);
+            if (typeof row.title !== "string")
+              throw new Error("Falta el nombre de una asignatura.");
+            const key = row.title.trim().toLocaleLowerCase();
+            if (
+              !state.nodes.some(
+                (n) =>
+                  n.kind === "course" &&
+                  [n.title, n.content].some(
+                    (s) => s.trim().toLocaleLowerCase() === key,
+                  ),
+              )
+            ) {
+              const course = create(state, {
+                kind: "course",
+                title: row.title,
+              });
+              const topics = create(state, {
+                kind: "folder",
+                title: "Temas",
+                parent_id: course.id,
+              });
+              const topic = create(state, {
+                kind: "folder",
+                title: "Tema 1",
+                parent_id: topics.id,
+              });
+              create(state, {
+                kind: "folder",
+                title: "Apuntes",
+                parent_id: topic.id,
+              });
+              for (const title of ["Exámenes", "Recursos"])
+                create(state, { kind: "folder", title, parent_id: course.id });
+            }
+          }
+        }
+      }
+      state.schedule =
+        path === "/schedule"
+          ? cleanSchedule(body, state.nodes)
+          : importSchedule(body, state.nodes, publicState(state).schedule);
+      log(state, "updated", "Horario semanal");
+      return publicState(state) as T;
+    }
     if (path.startsWith("/nodes/")) {
       const nodeId = path.slice("/nodes/".length);
       const index = state.nodes.findIndex((n) => n.id === nodeId);

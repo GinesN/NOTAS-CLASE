@@ -1,6 +1,6 @@
 # Aula
 
-El usuario quiere un espacio personal para sus nueve asignaturas de HES-SO, con carpetas anidadas, apuntes, exámenes y memoria de actividad. Prefiere entrar sin contraseña mientras use este entorno aislado. El repositorio puede ser privado; no cambies su visibilidad.
+El usuario quiere un espacio personal para sus doce asignaturas seleccionadas de HES-SO, con carpetas anidadas, apuntes, exámenes y memoria de actividad. Prefiere entrar sin contraseña mientras use este entorno aislado. El repositorio puede ser privado; no cambies su visibilidad.
 
 El usuario ha solicitado también GitHub Pages. `npm run build:pages` genera una versión independiente en `dist-pages`, con datos privados en IndexedDB del navegador. `npm run test:pages` verifica ese modo sin backend. `python3 scripts/publish-pages.py --push` publica solo los archivos estáticos en `gh-pages`. No subas `.data`, apuntes personales, copias o claves; no cambies la visibilidad del repositorio. Pages requiere activar la rama gh-pages en Settings → Pages.
 
@@ -25,3 +25,11 @@ Usa los datos de Aula, no nuevos archivos de apuntes en el repositorio:
 `AULA_DATA_DIR` cambia la ubicación; por defecto se usa `.data/aula.sqlite3`. Nunca subas esta base de datos, copias personales, contraseñas, sesiones o claves a Git. Haz copia antes de importar o reemplazar datos. Las pruebas deben usar una base temporal.
 
 La conexión desde una conversación ordinaria de ChatGPT requiere alojar la web con HTTPS y configurar las acciones de un GPT personalizado. No afirmes que la cuenta está conectada solo porque exista la API. El registro de Memoria contiene operaciones de Aula, no todo el historial de ChatGPT.
+
+## Preferencias de interfaz y horario
+
+El usuario quiere una interfaz sencilla, minimalista y centrada en la estructura: listas compactas, carpetas anidadas, sin bienvenida ornamental ni ilustraciones. Ha añadido Global HR Management, Design Thinking for AI and Digital Innovation y English Communication 3; International Organizational Behaviour queda separada.
+
+El horario personal se guarda en `.data` o IndexedDB, y se puede entregar mediante un JSON privado `AulaSchedule` importable. Nunca incluyas días, horas o aulas personales en el repositorio ni en el build de Pages. Propón la hora de clase para un examen solo cuando esté asociada a la asignatura; permite excepciones y no inventes fechas ni duración.
+
+La sección Memoria exporta documentos, horario y registro para compartir con una conversación futura. El chat no conserva ni accede automáticamente a todas las conversaciones o al almacenamiento privado del navegador. Para guardar preguntas/respuestas deben registrarse como apuntes.

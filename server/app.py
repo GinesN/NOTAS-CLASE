@@ -17,6 +17,7 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit, unquote
 import uuid
+import re
 from contextlib import contextmanager
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,14 +56,42 @@ def valid_date(value):
     return value
 
 
+def valid_time(value):
+    if not isinstance(value, str) or (value and not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", value)):
+        raise Problem("La hora debe tener el formato HH:MM.")
+    return value
+
+
+def clean_schedule(value, nodes):
+    if not isinstance(value, dict):
+        raise Problem("El horario no es válido.")
+    courses = {n["id"] for n in nodes if n["kind"] == "course"}
+    result = {}
+    for course_id, slot in value.items():
+        if course_id not in courses or not isinstance(slot, dict):
+            raise Problem("Una asignatura del horario no existe.")
+        weekday = slot.get("weekday")
+        if type(weekday) is not int or not 0 <= weekday <= 6:
+            raise Problem("Selecciona un día de la semana válido.")
+        start, end = valid_time(slot.get("start")), valid_time(slot.get("end"))
+        if not start or not end or end <= start:
+            raise Problem("La hora de fin debe ser posterior a la de inicio.")
+        room = slot.get("room", "")
+        if not isinstance(room, str) or len(room) > 100:
+            raise Problem("El aula puede tener hasta 100 caracteres.")
+        result[course_id] = {"weekday": weekday, "start": start, "end": end, "room": room}
+    return result
+
+
 def clean_node(data, existing=None):
     if not isinstance(data, dict):
         raise Problem("El documento no es válido.")
     n = dict(existing or {})
-    n.update({k: v for k, v in data.items() if k in {"title", "content", "kind", "parent_id", "color", "due_date", "done", "pinned"}})
+    n.update({k: v for k, v in data.items() if k in {"title", "content", "kind", "parent_id", "color", "due_date", "due_time", "done", "pinned"}})
     n.setdefault("content", "")
     n.setdefault("color", "sage")
     n.setdefault("due_date", "")
+    n.setdefault("due_time", "")
     n.setdefault("done", False)
     n.setdefault("pinned", False)
     n.setdefault("parent_id", None)
@@ -82,6 +111,7 @@ def clean_node(data, existing=None):
             raise Problem("El estado no es válido.")
         n[key] = bool(n[key])
     n["due_date"] = valid_date(n["due_date"])
+    n["due_time"] = valid_time(n["due_time"])
     return n
 
 
@@ -107,6 +137,8 @@ class Store:
                 CREATE TABLE IF NOT EXISTS sessions (hash TEXT PRIMARY KEY, expires REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS requests (id TEXT PRIMARY KEY, payload_hash TEXT NOT NULL, node_id TEXT NOT NULL);
             """)
+            if "due_time" not in {row["name"] for row in db.execute("PRAGMA table_info(nodes)")}:
+                db.execute("ALTER TABLE nodes ADD COLUMN due_time TEXT NOT NULL DEFAULT ''")
         os.chmod(self.path, 0o600)
         self.failures = {}
         self.failures_lock = threading.Lock()
@@ -202,7 +234,7 @@ class Store:
         n = clean_node(data)
         self.parent_valid(db, n)
         n.update(id=str(uuid.uuid4()), created_at=now(), updated_at=now())
-        columns = ["id", "parent_id", "kind", "title", "content", "color", "due_date", "done", "pinned", "created_at", "updated_at"]
+        columns = ["id", "parent_id", "kind", "title", "content", "color", "due_date", "done", "pinned", "created_at", "updated_at", "due_time"]
         db.execute(f"INSERT INTO nodes ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})", [n[k] for k in columns])
         self.log(db, "created", n["title"], n["id"], actor)
         return n
@@ -219,7 +251,7 @@ class Store:
                 raise Problem("Este documento cambió desde que lo abriste. Copia tus cambios y vuelve a abrirlo.", 409)
             n = clean_node(data, old)
             self.parent_valid(db, n, node_id)
-            fields = ["parent_id", "title", "content", "color", "due_date", "done", "pinned", "updated_at"]
+            fields = ["parent_id", "title", "content", "color", "due_date", "due_time", "done", "pinned", "updated_at"]
             n["updated_at"] = now()
             db.execute(f"UPDATE nodes SET {','.join(k+' = ?' for k in fields)} WHERE id = ?", [n[k] for k in fields] + [node_id])
             action = "completed" if n["done"] and not old["done"] else "updated"
@@ -239,7 +271,52 @@ class Store:
             return [dict(r) for r in db.execute("SELECT * FROM activity ORDER BY created_at DESC LIMIT 200")]
 
     def state(self):
-        return {"nodes": self.nodes(), "activity": self.activity(), "name": self.setting("name"), "api_enabled": bool(self.setting("api_key_hash"))}
+        return {"nodes": self.nodes(), "activity": self.activity(), "name": self.setting("name"), "api_enabled": bool(self.setting("api_key_hash")), "schedule": self.schedule()}
+
+    def schedule(self, db=None):
+        if db is None:
+            with self.connect() as connection:
+                return self.schedule(connection)
+        nodes = self.nodes(db)
+        ids = {n["id"] for n in nodes if n["kind"] == "course"}
+        return {key: value for key, value in json.loads(self.setting("class_schedule", db) or "{}").items() if key in ids}
+
+    def save_schedule(self, value):
+        with self.connect() as db:
+            schedule = clean_schedule(value, self.nodes(db))
+            db.execute("INSERT OR REPLACE INTO settings VALUES ('class_schedule', ?)", (json.dumps(schedule),))
+            self.log(db, "updated", "Horario semanal")
+        return schedule
+
+    def import_schedule(self, data):
+        if not isinstance(data, dict) or data.get("app") != "AulaSchedule" or data.get("version") != 1 or not isinstance(data.get("courses"), list) or len(data["courses"]) > 100:
+            raise Problem("No es un archivo de horario de Aula compatible.")
+        with self.connect() as db:
+            nodes = self.nodes(db)
+            slots = self.schedule(db)
+            assigned = set()
+            for row in data["courses"]:
+                if not isinstance(row, dict) or not isinstance(row.get("title"), str):
+                    raise Problem("Falta el nombre de una asignatura.")
+                key = row["title"].strip().casefold()
+                found = [n for n in nodes if n["kind"] == "course" and key in {n["title"].strip().casefold(), n["content"].strip().casefold()}]
+                if not found and data.get("add_courses") is True:
+                    course = self.create({"kind": "course", "title": row["title"]}, db=db)
+                    topics = self.create({"kind": "folder", "title": "Temas", "parent_id": course["id"]}, db=db)
+                    topic = self.create({"kind": "folder", "title": "Tema 1", "parent_id": topics["id"]}, db=db)
+                    self.create({"kind": "folder", "title": "Apuntes", "parent_id": topic["id"]}, db=db)
+                    for title in ("Exámenes", "Recursos"):
+                        self.create({"kind": "folder", "title": title, "parent_id": course["id"]}, db=db)
+                    nodes = self.nodes(db)
+                    found = [course]
+                if len(found) != 1 or found[0]["id"] in assigned:
+                    raise Problem("No se puede identificar de forma única la asignatura: " + row["title"])
+                assigned.add(found[0]["id"])
+                slots[found[0]["id"]] = row
+            schedule = clean_schedule(slots, nodes)
+            db.execute("INSERT OR REPLACE INTO settings VALUES ('class_schedule', ?)", (json.dumps(schedule),))
+            self.log(db, "updated", "Horario semanal")
+            return schedule
 
     def seed(self):
         with self.connect() as db:
@@ -253,11 +330,11 @@ class Store:
                     self.create({"kind": "folder", "title": title, "parent_id": course["id"], "color": color}, db=db)
             self.create({"kind": "note", "title": "Bienvenido a tu espacio", "pinned": True, "content": "# Todo tiene su lugar\n\nAula es tu espacio privado para organizar el curso a tu manera.\n\n## Empieza por tus asignaturas\n\nCrea una asignatura y añade carpetas para cada tema. Dentro puedes guardar apuntes, resúmenes o exámenes. Puedes crear tantos niveles como necesites.\n\n## Tus apuntes viajan contigo\n\nEn Ajustes puedes descargar una copia de tus datos e importarla en otro ordenador. Si alojas Aula en un servidor con HTTPS, podrás entrar desde cualquier dispositivo.\n\n## Trabaja con ChatGPT\n\nEn la sección ChatGPT puedes copiar el contexto de tus apuntes y preparar una conexión mediante un GPT personalizado. La conexión automática necesita que tu servidor esté accesible por HTTPS."}, db=db)
             db.execute("DELETE FROM activity")
-            self.log(db, "created", "Tus nueve asignaturas y tu espacio de estudio")
+            self.log(db, "created", "Asignaturas y espacio de estudio")
 
     def backup(self):
         with self.connect() as db:
-            return {"app": "Aula", "version": 1, "exported_at": now(), "name": self.setting("name", db), "nodes": self.nodes(db), "activity": [dict(r) for r in db.execute("SELECT * FROM activity ORDER BY created_at")]}
+            return {"app": "Aula", "version": 1, "exported_at": now(), "name": self.setting("name", db), "nodes": self.nodes(db), "activity": [dict(r) for r in db.execute("SELECT * FROM activity ORDER BY created_at")], "schedule": self.schedule(db)}
 
     def restore(self, data):
         if not isinstance(data, dict) or data.get("app") != "Aula" or data.get("version") != 1 or not isinstance(data.get("nodes"), list) or len(data["nodes"]) > 10000:
@@ -315,16 +392,18 @@ class Store:
                 raise Problem("El historial contiene identificadores inválidos.")
             ids.add(a["id"])
             validated_history.append(a)
+        schedule = clean_schedule(data.get("schedule", {}), list(nodes.values()))
         with self.connect() as db:
             db.execute("DELETE FROM nodes")
             db.execute("DELETE FROM activity")
             db.execute("DELETE FROM requests")
-            columns = ["id", "parent_id", "kind", "title", "content", "color", "due_date", "done", "pinned", "created_at", "updated_at"]
+            columns = ["id", "parent_id", "kind", "title", "content", "color", "due_date", "done", "pinned", "created_at", "updated_at", "due_time"]
             for n in ordered:
-                db.execute(f"INSERT INTO nodes VALUES ({','.join('?' for _ in columns)})", [n[k] for k in columns])
+                db.execute(f"INSERT INTO nodes ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})", [n[k] for k in columns])
             for a in validated_history:
                 db.execute("INSERT INTO activity VALUES (?, ?, ?, ?, ?, ?)", [a.get(k) for k in ("id", "action", "title", "node_id", "actor", "created_at")])
             self.log(db, "restored", "Copia de seguridad importada")
+            db.execute("INSERT OR REPLACE INTO settings VALUES ('class_schedule', ?)", (json.dumps(schedule),))
 
     def chatgpt_document(self, data, actor="ChatGPT"):
         path = data.get("path")
@@ -361,7 +440,16 @@ class Store:
                 else:
                     n = self.create({"title": part, "kind": "course" if i == 0 else "folder", "parent_id": parent, "color": color}, actor, db)
                     parent = n["id"]
-            n = self.create({"kind": data.get("kind", "note"), "title": data.get("title"), "content": data.get("content", ""), "due_date": data.get("due_date", ""), "parent_id": parent, "color": color}, actor, db)
+            due_time = data.get("due_time", "")
+            if data.get("kind") == "exam" and "due_time" not in data:
+                cursor = parent
+                while cursor:
+                    course = db.execute("SELECT kind, parent_id FROM nodes WHERE id = ?", (cursor,)).fetchone()
+                    if course["kind"] == "course":
+                        due_time = self.schedule(db).get(cursor, {}).get("start", "")
+                        break
+                    cursor = course["parent_id"]
+            n = self.create({"kind": data.get("kind", "note"), "title": data.get("title"), "content": data.get("content", ""), "due_date": data.get("due_date", ""), "due_time": due_time, "parent_id": parent, "color": color}, actor, db)
             if request_id:
                 db.execute("INSERT INTO requests VALUES (?, ?, ?)", (request_id, payload_hash, n["id"]))
             return n
@@ -374,7 +462,7 @@ def openapi(base):
         "components": {"securitySchemes": {"bearerAuth": {"type": "http", "scheme": "bearer"}}},
         "paths": {
             "/api/chatgpt/tree": {"get": {"operationId": "readStudySpace", "summary": "Leer asignaturas, carpetas y documentos para encontrar el destino adecuado", "responses": {"200": {"description": "Árbol de documentos y registro reciente", "content": {"application/json": {"schema": {"type": "object", "properties": {"nodes": {"type": "array", "items": {"type": "object", "additionalProperties": True}}, "activity": {"type": "array", "items": {"type": "object", "additionalProperties": True}}}}}}}}}},
-            "/api/chatgpt/documents": {"post": {"operationId": "saveStudyDocument", "summary": "Crear un apunte o examen en una ruta concreta; crear los apartados que falten", "x-openai-isConsequential": True, "requestBody": {"required": True, "content": {"application/json": {"schema": {"type": "object", "required": ["path", "title", "content"], "properties": {"path": {"type": "array", "items": {"type": "string"}, "description": "Ruta de carpetas, empezando por la asignatura. Ejemplo: Matemáticas, Tema 1, Apuntes."}, "title": {"type": "string"}, "content": {"type": "string", "description": "Contenido en Markdown"}, "kind": {"type": "string", "enum": ["note", "exam"], "default": "note"}, "due_date": {"type": "string", "description": "Fecha opcional YYYY-MM-DD"}, "request_id": {"type": "string", "description": "Identificador único que se reutiliza si se reintenta la misma petición para evitar duplicados"}}}}}}, "responses": {"201": {"description": "Documento guardado", "content": {"application/json": {"schema": {"type": "object", "properties": {"id": {"type": "string"}, "title": {"type": "string"}, "parent_id": {"type": "string"}}}}}}}}}
+            "/api/chatgpt/documents": {"post": {"operationId": "saveStudyDocument", "summary": "Crear un apunte o examen en una ruta concreta; crear los apartados que falten", "x-openai-isConsequential": True, "requestBody": {"required": True, "content": {"application/json": {"schema": {"type": "object", "required": ["path", "title", "content"], "properties": {"path": {"type": "array", "items": {"type": "string"}, "description": "Ruta de carpetas, empezando por la asignatura. Ejemplo: Matemáticas, Tema 1, Apuntes."}, "title": {"type": "string"}, "content": {"type": "string", "description": "Contenido en Markdown"}, "kind": {"type": "string", "enum": ["note", "exam"], "default": "note"}, "due_date": {"type": "string", "description": "Fecha opcional YYYY-MM-DD"}, "due_time": {"type": "string", "description": "Hora HH:MM; si se omite en un examen, se propone la hora de clase"}, "request_id": {"type": "string", "description": "Identificador único que se reutiliza si se reintenta la misma petición para evitar duplicados"}}}}}}, "responses": {"201": {"description": "Documento guardado", "content": {"application/json": {"schema": {"type": "object", "properties": {"id": {"type": "string"}, "title": {"type": "string"}, "parent_id": {"type": "string"}}}}}}}}}
         }
     }
 
@@ -472,7 +560,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_response(openapi(self.server.public_url or f"http://{self.headers['Host']}"))
             if path == "/api/chatgpt/tree":
                 self.require_auth(api=True)
-                return self.json_response({"nodes": self.store.nodes(), "activity": self.store.activity()})
+                return self.json_response({"nodes": self.store.nodes(), "activity": self.store.activity(), "schedule": self.store.schedule()})
             if path.startswith("/api/"):
                 self.require_auth()
                 if path == "/api/state":
@@ -551,6 +639,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json_response({"ok": True}, cookie=self.cookie(self.store.session()))
             if method == "POST" and path == "/api/nodes":
                 return self.json_response(self.store.create(self.body()), 201)
+            if method == "POST" and path == "/api/schedule":
+                self.store.save_schedule(self.body())
+                return self.json_response(self.store.state())
+            if method == "POST" and path == "/api/schedule/import":
+                self.store.import_schedule(self.body())
+                return self.json_response(self.store.state())
             if path.startswith("/api/nodes/"):
                 node_id = path.removeprefix("/api/nodes/")
                 if method == "PATCH":

@@ -54,7 +54,8 @@ import {
 import type { LucideIcon } from "lucide-react";
 import "./styles.css";
 
-import type { Kind, Item, Activity, State, Auth } from "./model";
+import type { Kind, Item, Activity, State, Auth, ClassSchedule } from "./model";
+import { weekdays, courseFor, scheduleLabel } from "./schedule";
 import { browserMode, browserApi } from "./browser-store";
 
 const labels: Record<Kind, string> = {
@@ -396,7 +397,7 @@ function Login({ auth, onLogin }: { auth: Auth; onLogin: () => void }) {
                   onChange={(e) => setTemplate(e.target.checked)}
                 />
                 <span>
-                  Preparar mis nueve asignaturas de HES-SO
+                  Preparar mis asignaturas de HES-SO
                   <small>
                     Temas, exámenes y recursos, listos para empezar.
                   </small>
@@ -504,7 +505,6 @@ function CourseCard({
   navigate: (r: string) => void;
   pin: (item: Item) => void;
 }) {
-  const Icon = courseIcons[index % courseIcons.length];
   const notes = descendants(item, nodes).filter(
     (n) => n.kind === "note",
   ).length;
@@ -512,38 +512,29 @@ function CourseCard({
     (n) => n.parent_id === item.id && n.kind === "folder",
   ).length;
   return (
-    <article className={"course-card palette-" + item.color}>
-      <div className="course-card-top">
-        <span className="course-icon">
-          <Icon size={23} strokeWidth={1.6} />
-        </span>
-        <button
-          className={"icon-button favorite " + (item.pinned ? "is-pinned" : "")}
-          aria-label={
-            (item.pinned ? "Quitar de favoritos " : "Añadir a favoritos ") +
-            item.title
-          }
-          onClick={() => pin(item)}
-        >
-          <Star size={16} fill={item.pinned ? "currentColor" : "none"} />
-        </button>
-      </div>
+    <article className="course-card">
       <button
         className="course-card-link"
         onClick={() => navigate("node:" + item.id)}
       >
-        <span className="course-code">
-          ASIGNATURA {String(index + 1).padStart(2, "0")}
-        </span>
-        <h3>{item.title}</h3>
-        <div className="course-card-footer">
+        <BookOpen size={17} />
+        <div>
+          <h3>{item.title}</h3>
           <span>
-            <Folder size={13} /> {folders} apartados
-            <span className="dot">·</span>
-            {notes} {notes === 1 ? "apunte" : "apuntes"}
+            {folders} apartados · {notes} {notes === 1 ? "apunte" : "apuntes"}
           </span>
-          <ArrowUpRight size={17} />
         </div>
+        <ChevronRight size={15} />
+      </button>
+      <button
+        className={"icon-button favorite " + (item.pinned ? "is-pinned" : "")}
+        aria-label={
+          (item.pinned ? "Quitar de favoritos " : "Añadir a favoritos ") +
+          item.title
+        }
+        onClick={() => pin(item)}
+      >
+        <Star size={16} fill={item.pinned ? "currentColor" : "none"} />
       </button>
     </article>
   );
@@ -592,6 +583,7 @@ function ItemRow({
           {item.kind === "exam" && item.due_date
             ? " · " + dateLabel(item.due_date + "T12:00:00")
             : ""}
+          {item.kind === "exam" && item.due_time ? " · " + item.due_time : ""}
         </span>
       </button>
       <span className="item-date">{dateLabel(item.updated_at)}</span>
@@ -643,12 +635,14 @@ function CreateModal({
   nodes,
   initialParent,
   initialKind,
+  schedule,
   onClose,
   onCreated,
 }: {
   nodes: Item[];
   initialParent: string | null;
   initialKind: Kind;
+  schedule: Record<string, ClassSchedule>;
   onClose: () => void;
   onCreated: (item: Item) => void;
 }) {
@@ -659,6 +653,14 @@ function CreateModal({
     nodes.find((n) => n.id === initialParent)?.color || "sage",
   );
   const [due, setDue] = useState("");
+  const [dueTime, setDueTime] = useState("");
+  const [autoTime, setAutoTime] = useState(true);
+  const course = courseFor(parent || null, nodes);
+  const classSlot = course ? schedule[course.id] : undefined;
+  const suggestedTime = classSlot?.start || "";
+  useEffect(() => {
+    if (kind === "exam" && autoTime) setDueTime(suggestedTime);
+  }, [kind, autoTime, suggestedTime]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function submit(e: React.FormEvent) {
@@ -672,6 +674,7 @@ function CreateModal({
         parent_id: kind === "course" ? null : parent || null,
         color,
         due_date: due,
+        due_time: kind === "exam" ? dueTime : "",
       });
       onCreated(item);
     } catch (e) {
@@ -681,11 +684,7 @@ function CreateModal({
     }
   }
   return (
-    <Modal
-      title="Un nuevo comienzo"
-      subtitle="Dale un lugar a lo que estás aprendiendo."
-      onClose={onClose}
-    >
+    <Modal title="Crear elemento" onClose={onClose}>
       <form onSubmit={submit}>
         <div className="type-picker">
           {(["note", "folder", "exam", "course"] as Kind[]).map((k) => {
@@ -695,7 +694,10 @@ function CreateModal({
                 key={k}
                 type="button"
                 className={kind === k ? "active" : ""}
-                onClick={() => setKind(k)}
+                onClick={() => {
+                  setKind(k);
+                  setAutoTime(true);
+                }}
               >
                 <Icon size={19} />
                 <span>{labels[k]}</span>
@@ -729,6 +731,7 @@ function CreateModal({
               value={parent}
               onChange={(e) => {
                 setParent(e.target.value);
+                setAutoTime(true);
                 setColor(
                   nodes.find((n) => n.id === e.target.value)?.color || "sage",
                 );
@@ -746,16 +749,38 @@ function CreateModal({
           </label>
         )}
         {kind === "exam" && (
-          <label>
-            Fecha del examen <span className="optional">(opcional)</span>
-            <input
-              type="date"
-              value={due}
-              onChange={(e) => setDue(e.target.value)}
-            />
-          </label>
+          <>
+            <label>
+              Fecha del examen <span className="optional">(opcional)</span>
+              <input
+                type="date"
+                value={due}
+                onChange={(e) => setDue(e.target.value)}
+              />
+            </label>
+            <label>
+              Hora del examen <span className="optional">(opcional)</span>
+              <input
+                type="time"
+                value={dueTime}
+                onChange={(event) => {
+                  setDueTime(event.target.value);
+                  setAutoTime(false);
+                }}
+              />
+            </label>
+            {classSlot && (
+              <p className="schedule-hint">
+                Horario de {course?.title}: {scheduleLabel(classSlot)}.{" "}
+                {due &&
+                new Date(due + "T12:00:00Z").getUTCDay() !== classSlot.weekday
+                  ? "La fecha elegida cae en otro día; comprueba la hora del examen."
+                  : "La hora propuesta se puede cambiar."}
+              </p>
+            )}
+          </>
         )}
-        <label>Un toque de color</label>
+        <label>Color</label>
         <div className="color-picker">
           {colors.map((c) => (
             <button
@@ -892,6 +917,7 @@ function Editor({
   const [content, setContent] = useState(item.content);
   const [parent, setParent] = useState(item.parent_id || "");
   const [due, setDue] = useState(item.due_date);
+  const [dueTime, setDueTime] = useState(item.due_time || "");
   const [editing, setEditing] = useState(!item.content);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -900,7 +926,8 @@ function Editor({
     title !== item.title ||
     content !== item.content ||
     parent !== (item.parent_id || "") ||
-    due !== item.due_date;
+    due !== item.due_date ||
+    dueTime !== (item.due_time || "");
   useEffect(() => {
     dirtyChange(dirty);
     return () => dirtyChange(false);
@@ -914,6 +941,7 @@ function Editor({
         content,
         parent_id: parent || null,
         due_date: due,
+        due_time: dueTime,
         expected_updated_at: item.updated_at,
       });
       dirtyChange(false);
@@ -949,6 +977,10 @@ function Editor({
             {fullPath(item, nodes).split(" / ").slice(0, -1).join(" / ") ||
               "Mi espacio"}{" "}
             · Editado el {dateLabel(item.updated_at)}
+            {item.kind === "exam" && item.due_date
+              ? " · " + dateLabel(item.due_date + "T12:00:00")
+              : ""}
+            {item.kind === "exam" && item.due_time ? " · " + item.due_time : ""}
           </p>
         </div>
         <div className="heading-actions">
@@ -1040,14 +1072,24 @@ function Editor({
                 </select>
               </label>
               {item.kind === "exam" && (
-                <label>
-                  Fecha del examen
-                  <input
-                    type="date"
-                    value={due}
-                    onChange={(e) => setDue(e.target.value)}
-                  />
-                </label>
+                <>
+                  <label>
+                    Fecha del examen
+                    <input
+                      type="date"
+                      value={due}
+                      onChange={(e) => setDue(e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Hora del examen
+                    <input
+                      type="time"
+                      value={dueTime}
+                      onChange={(event) => setDueTime(event.target.value)}
+                    />
+                  </label>
+                </>
               )}
             </div>
             <div className="format-bar">
@@ -1096,8 +1138,8 @@ function Editor({
         ) : (
           <Empty
             icon={NotebookPen}
-            title="La primera idea va aquí"
-            text="Empieza a escribir. Este espacio es tuyo."
+            title="Apunte vacío"
+            text="Escribe el contenido del apunte."
             action="Escribir mi apunte"
             onClick={() => setEditing(true)}
           />
@@ -1125,11 +1167,13 @@ function Integration({
   onClose,
   refresh,
   toast,
+  onExport,
 }: {
   state: State;
   onClose: () => void;
   refresh: () => Promise<void>;
   toast: (message: string) => void;
+  onExport: () => Promise<void>;
 }) {
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1187,75 +1231,63 @@ function Integration({
     return (
       <Modal
         wide
-        title="Tus ideas, conectadas."
-        subtitle="Tu espacio de estudio en GitHub Pages."
+        title="ChatGPT"
+        subtitle="Cómo trabajar con tus apuntes"
         onClose={onClose}
       >
-        <div className="integration-banner">
-          <span className="little-icon">
-            <Sparkles size={24} />
-          </span>
-          <div>
-            <strong>Lleva tus asignaturas a la conversación</strong>
-            <p>
-              Copia el índice y pide a ChatGPT que te ayude a preparar tus
-              temas.
-            </p>
-          </div>
-        </div>
-        <div className="integration-section">
-          <div className="section-title">
-            <h3>Comparte el contexto de tus clases</h3>
-            <span className="badge sage">Disponible ahora</span>
-          </div>
+        <section className="integration-section">
+          <h3>Guardar una respuesta</h3>
           <p>
-            El índice incluye los nombres de tus asignaturas y carpetas. Si
-            quieres compartir el texto de tus apuntes, descarga una copia desde
-            Ajustes y selecciona lo que quieras enviar.
+            Pídeme el contenido en este chat. Después crea un apunte en la
+            asignatura y carpeta correctas, pega la respuesta y pulsa Guardar
+            cambios.
           </p>
-          <button
-            className="button secondary"
-            onClick={() =>
-              copy(
-                "# Mi espacio en Aula\n\n" +
-                  state.nodes
-                    .filter((n) => n.kind === "course" || n.kind === "folder")
-                    .map((n) => "- " + fullPath(n, state.nodes))
-                    .join("\n"),
-                "Índice copiado para ChatGPT",
-              )
-            }
-          >
-            <Copy size={16} />
-            Copiar contexto de mis clases
+        </section>
+        <section className="integration-section">
+          <h3>Retomar el trabajo en otra conversación</h3>
+          <p>
+            Descarga tu contexto y adjunta el archivo al empezar la próxima
+            conversación. Incluye los apuntes, el horario y el registro que
+            hayas guardado en Aula.
+          </p>
+          <button className="button secondary" onClick={onExport}>
+            <ArrowDownToLine size={15} />
+            Exportar contexto completo
           </button>
-        </div>
-        <div className="integration-section">
+        </section>
+        <section className="integration-section">
           <div className="section-title">
-            <h3>Guardado automático desde ChatGPT</h3>
+            <h3>Guardado automático</h3>
             <span className="badge peach">Requiere servidor</span>
           </div>
           <p>
-            GitHub Pages guarda los datos en tu navegador. ChatGPT y este
-            entorno de Codex no pueden escribir directamente en ese
-            almacenamiento. Puedes copiar el contenido a un apunte, o importar
-            una copia preparada de Aula.
+            Esta versión guarda los datos en tu navegador. ChatGPT no puede
+            leerlos ni escribir en ellos automáticamente. Para guardar desde el
+            chat y sincronizar ordenadores necesitamos conectar la versión con
+            servidor.
           </p>
-          <p>
-            La versión con servidor está incluida en el repositorio. Alojarla
-            con HTTPS permite conectar las acciones de un GPT personalizado y
-            utilizar la misma base de datos desde varios dispositivos.
-          </p>
-        </div>
+        </section>
+        <button
+          className="text-button"
+          onClick={() =>
+            copy(
+              "# Asignaturas y carpetas en Aula\n\n" +
+                state.nodes
+                  .filter((n) => n.kind === "course" || n.kind === "folder")
+                  .map((n) => "- " + fullPath(n, state.nodes))
+                  .join("\n"),
+              "Índice copiado",
+            )
+          }
+        >
+          <Copy size={15} />
+          Copiar solo el índice de asignaturas
+        </button>
         {error && (
           <p role="alert" className="form-error">
             {error}
           </p>
         )}
-        <div className="modal-footer-note">
-          <ShieldCheck size={15} />
-          Aula no envía tus apuntes a ChatGPT automáticamente.
-        </div>
       </Modal>
     );
   }
@@ -1432,6 +1464,270 @@ function Integration({
   );
 }
 
+function SchedulePage({
+  nodes,
+  schedule,
+  onSave,
+  onImport,
+}: {
+  nodes: Item[];
+  schedule: Record<string, ClassSchedule>;
+  onSave: (value: Record<string, ClassSchedule>) => Promise<void>;
+  onImport: (value: unknown) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState<Item | null>(null);
+  const [slot, setSlot] = useState<ClassSchedule>({
+    weekday: 1,
+    start: "",
+    end: "",
+    room: "",
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const input = useRef<HTMLInputElement>(null);
+  const courses = nodes
+    .filter((n) => n.kind === "course")
+    .sort((a, b) => {
+      const first = schedule[a.id],
+        second = schedule[b.id];
+      if (!first || !second) return first ? -1 : second ? 1 : 0;
+      return (
+        ((first.weekday + 6) % 7) - ((second.weekday + 6) % 7) ||
+        first.start.localeCompare(second.start)
+      );
+    });
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    if (!editing) return;
+    setBusy(true);
+    setError("");
+    try {
+      await onSave({ ...schedule, [editing.id]: slot });
+      setEditing(null);
+    } catch (error) {
+      setError((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function remove() {
+    if (!editing) return;
+    setBusy(true);
+    setError("");
+    try {
+      const copy = { ...schedule };
+      delete copy[editing.id];
+      await onSave(copy);
+      setEditing(null);
+    } catch (error) {
+      setError((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function importFile(file?: File) {
+    if (!file) return;
+    setBusy(true);
+    setError("");
+    try {
+      if (file.size > 100000)
+        throw new Error("El archivo de horario supera 100 KB.");
+      await onImport(JSON.parse(await file.text()));
+    } catch (error) {
+      setError((error as Error).message);
+    } finally {
+      setBusy(false);
+      if (input.current) input.current.value = "";
+    }
+  }
+  return (
+    <>
+      <div className="page-heading">
+        <div>
+          <h1>Horario semanal</h1>
+          <p>Una clase por asignatura · Hora local de Ginebra</p>
+        </div>
+        <button
+          className="button secondary"
+          disabled={busy}
+          onClick={() => input.current?.click()}
+        >
+          <Upload size={15} />
+          Importar horario
+        </button>
+        <input
+          hidden
+          ref={input}
+          type="file"
+          accept="application/json,.json"
+          aria-label="Importar archivo de horario"
+          onChange={(event) => importFile(event.target.files?.[0])}
+        />
+      </div>
+      {!Object.keys(schedule).length && (
+        <p className="schedule-notice">
+          El horario todavía está pendiente. Añade el día y la franja de cada
+          asignatura o importa el archivo de horario preparado a partir de tu
+          imagen.
+        </p>
+      )}
+      <div className="schedule-table-wrap">
+        <table className="schedule-table">
+          <thead>
+            <tr>
+              <th>Asignatura</th>
+              <th>Día</th>
+              <th>Hora</th>
+              <th className="room-column">Aula</th>
+              <th>
+                <span className="sr-only">Acciones</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {courses.map((course) => (
+              <tr key={course.id}>
+                <th scope="row">{course.title}</th>
+                <td>
+                  {schedule[course.id] ? (
+                    weekdays[schedule[course.id].weekday]
+                  ) : (
+                    <span className="muted">Sin añadir</span>
+                  )}
+                </td>
+                <td>
+                  {schedule[course.id]
+                    ? schedule[course.id].start + "–" + schedule[course.id].end
+                    : "—"}
+                </td>
+                <td className="room-column">
+                  <span className="room-caption">Aula </span>
+                  {schedule[course.id]?.room || "—"}
+                </td>
+                <td>
+                  <button
+                    className="icon-button"
+                    aria-label={"Editar horario de " + course.title}
+                    onClick={() => {
+                      setEditing(course);
+                      setSlot(
+                        schedule[course.id] || {
+                          weekday: 1,
+                          start: "",
+                          end: "",
+                          room: "",
+                        },
+                      );
+                      setError("");
+                    }}
+                  >
+                    <Pencil size={15} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="help-text">
+        Los exámenes creados dentro de una asignatura propondrán la hora de esa
+        clase. Puedes cambiarla cuando el examen tenga un horario distinto.
+      </p>
+      {error && !editing && (
+        <p role="alert" className="form-error">
+          {error}
+        </p>
+      )}
+      {editing && (
+        <Modal
+          title="Horario de clase"
+          subtitle={editing.title}
+          onClose={() => setEditing(null)}
+        >
+          <form onSubmit={save}>
+            <label>
+              Día de clase
+              <select
+                value={slot.weekday}
+                onChange={(event) =>
+                  setSlot({ ...slot, weekday: Number(event.target.value) })
+                }
+              >
+                {[1, 2, 3, 4, 5, 6, 0].map((day) => (
+                  <option key={day} value={day}>
+                    {weekdays[day]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="time-fields">
+              <label>
+                Inicio
+                <input
+                  required
+                  type="time"
+                  value={slot.start}
+                  onChange={(event) =>
+                    setSlot({ ...slot, start: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Fin
+                <input
+                  required
+                  type="time"
+                  value={slot.end}
+                  onChange={(event) =>
+                    setSlot({ ...slot, end: event.target.value })
+                  }
+                />
+              </label>
+            </div>
+            <label>
+              Aula <span className="optional">(opcional)</span>
+              <input
+                maxLength={100}
+                value={slot.room}
+                onChange={(event) =>
+                  setSlot({ ...slot, room: event.target.value })
+                }
+              />
+            </label>
+            {error && (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            )}
+            <div className="modal-actions">
+              {schedule[editing.id] && (
+                <button
+                  type="button"
+                  className="text-button danger remove-slot"
+                  disabled={busy}
+                  onClick={remove}
+                >
+                  Quitar horario
+                </button>
+              )}
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => setEditing(null)}
+              >
+                Cancelar
+              </button>
+              <button className="button primary" disabled={busy}>
+                {busy ? "Guardando…" : "Guardar horario"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </>
+  );
+}
+
 function SettingsPage({
   state,
   refresh,
@@ -1510,7 +1806,7 @@ function SettingsPage({
       <div className="page-heading">
         <div>
           <div className="eyebrow">SIEMPRE TUYO</div>
-          <h1>Cuida tu espacio.</h1>
+          <h1>Ajustes</h1>
           <p>Copias, privacidad y la libertad de llevártelo contigo.</p>
         </div>
       </div>
@@ -1521,9 +1817,9 @@ function SettingsPage({
           </span>
           <h2>Tus apuntes viajan contigo</h2>
           <p>
-            La copia incluye tus asignaturas, carpetas, apuntes, exámenes y
-            registro de actividad. Las contraseñas y las claves de ChatGPT se
-            quedan fuera.
+            La copia incluye tus asignaturas, carpetas, apuntes, exámenes,
+            horario y registro de actividad. Las contraseñas y las claves de
+            ChatGPT se quedan fuera.
           </p>
           <div className="backup-stats">
             <span>
@@ -1814,6 +2110,65 @@ function App() {
       setError((e as Error).message);
     }
   }
+  async function exportContext() {
+    try {
+      const data = await api<{
+        nodes: Item[];
+        activity: Activity[];
+        schedule?: Record<string, ClassSchedule>;
+      }>("/backup");
+      const lines = [
+        "# Mi contexto de estudio en Aula",
+        "",
+        "Información guardada por el usuario. No representa el historial completo de ChatGPT.",
+        "",
+        "## Asignaturas y horario",
+        "",
+      ];
+      for (const course of data.nodes.filter((n) => n.kind === "course"))
+        lines.push(
+          "- " +
+            course.title +
+            " — " +
+            scheduleLabel(data.schedule?.[course.id]),
+        );
+      lines.push("", "## Documentos guardados", "");
+      for (const note of data.nodes.filter(
+        (n) => n.kind === "note" || n.kind === "exam",
+      ))
+        lines.push(
+          "### " + fullPath(note, data.nodes),
+          "",
+          "Tipo: " +
+            labels[note.kind] +
+            (note.due_date ? " · Fecha: " + note.due_date : "") +
+            (note.due_time ? " · Hora: " + note.due_time : ""),
+          "",
+          note.content || "(Sin contenido)",
+          "",
+        );
+      lines.push("## Registro de actividad", "");
+      for (const entry of data.activity)
+        lines.push(
+          "- " +
+            entry.created_at +
+            " · " +
+            entry.actor +
+            " · " +
+            entry.action +
+            " · " +
+            entry.title,
+        );
+      download(
+        "aula-contexto-" + new Date().toISOString().slice(0, 10) + ".md",
+        lines.join("\n"),
+        "text/markdown",
+      );
+      toast("Contexto exportado");
+    } catch (error) {
+      setError((error as Error).message);
+    }
+  }
   async function logout() {
     if (
       dirtyRef.current &&
@@ -1892,6 +2247,7 @@ function App() {
     { id: "courses", label: "Asignaturas", icon: BookOpen },
     { id: "favorites", label: "Favoritos", icon: Star },
     { id: "exams", label: "Exámenes", icon: CalendarDays },
+    { id: "schedule", label: "Horario", icon: Clock3 },
     { id: "memory", label: "Memoria", icon: History },
   ];
   const currentLabel = selected
@@ -1939,7 +2295,7 @@ function App() {
             {state.name.charAt(0).toUpperCase()}
           </span>
           <div>
-            <strong>El espacio de {state.name}</strong>
+            <strong>{state.name}</strong>
             <span>Personal · Curso 2026–27</span>
           </div>
           <LockKeyhole size={13} />
@@ -1997,10 +2353,9 @@ function App() {
             <span className="chatgpt-card-icon">
               <Sparkles size={18} />
             </span>
-            <strong>Tus ideas, conectadas.</strong>
-            <p>Haz equipo con ChatGPT.</p>
+            <strong>ChatGPT</strong>
             <span className="chatgpt-card-link">
-              Preparar conexión
+              Contexto y conexión
               <ArrowUpRight size={14} />
             </span>
           </button>
@@ -2088,8 +2443,8 @@ function App() {
             <div className="browser-storage-banner">
               <ShieldCheck size={15} />
               <span>
-                Tus apuntes se guardan en este navegador. Para llevarlos a otro
-                ordenador, descarga una copia.
+                Guardado en este navegador. Las copias incluyen tus apuntes, el
+                horario y el registro.
               </span>
               <button
                 className="text-button"
@@ -2102,93 +2457,36 @@ function App() {
           )}
           {route === "home" && (
             <>
-              <div className="page-heading dashboard-heading">
+              <div className="page-heading">
                 <div>
-                  <div className="eyebrow">TU DÍA, UN POCO MÁS CLARO</div>
-                  <h1>
-                    Hola, {state.name}
-                    <span className="greeting-dot">.</span>
-                  </h1>
-                  <p>Todo lo que aprendes, en un mismo lugar.</p>
+                  <h1>Mi espacio</h1>
+                  <p>HES-SO · Curso 2026–2027</p>
                 </div>
                 <button
                   className="button primary"
                   onClick={() => make("note", null)}
                 >
-                  <Plus size={17} />
+                  <Plus size={16} />
                   Crear nuevo
                 </button>
-              </div>
-              <section className="welcome-banner">
-                <div>
-                  <span className="semester-badge">
-                    <span className="status-dot" />
-                    CURSO 2026 — 2027
-                  </span>
-                  <h2>
-                    Un poco de orden.
-                    <br />
-                    <em>Más espacio para pensar.</em>
-                  </h2>
-                  <p>
-                    De la primera clase al último examen.
-                    <br />
-                    Construye tu curso, una idea a la vez.
-                  </p>
-                  <button
-                    className="text-button"
-                    onClick={() => navigate("courses")}
-                  >
-                    Explorar mis asignaturas
-                    <ArrowRight size={16} />
-                  </button>
-                </div>
-                <BookIllustration />
-                <span className="hero-corner">
-                  HECHO PARA TU MANERA DE APRENDER
-                </span>
-              </section>
-              <div className="dashboard-stats">
-                <span>
-                  <span className="stat-icon">
-                    <BookOpen size={17} />
-                  </span>
-                  <strong>{courses.length}</strong> asignaturas
-                </span>
-                <span>
-                  <span className="stat-icon">
-                    <NotebookPen size={17} />
-                  </span>
-                  <strong>{notes.length}</strong>{" "}
-                  {notes.length === 1 ? "apunte" : "apuntes"}
-                </span>
-                <span>
-                  <span className="stat-icon">
-                    <CalendarDays size={17} />
-                  </span>
-                  <strong>{pending.length}</strong> exámenes pendientes
-                </span>
-                <span className="stats-message">
-                  <Leaf size={15} />A tu ritmo. A tu manera.
-                </span>
               </div>
               <section className="courses-section">
                 <div className="section-heading">
                   <h2>
-                    Tus asignaturas{" "}
+                    Asignaturas{" "}
                     <span className="count-pill">{courses.length}</span>
                   </h2>
                   <button
                     className="text-button"
-                    onClick={() => navigate("courses")}
+                    onClick={() => make("course", null)}
                   >
-                    Ver todas
-                    <ArrowRight size={15} />
+                    <Plus size={14} />
+                    Añadir
                   </button>
                 </div>
                 {courses.length ? (
                   <div className="course-grid">
-                    {courses.slice(0, 6).map((c, i) => (
+                    {courses.map((c, i) => (
                       <CourseCard
                         key={c.id}
                         item={c}
@@ -2202,8 +2500,8 @@ function App() {
                 ) : (
                   <Empty
                     icon={BookOpen}
-                    title="El curso empieza aquí"
-                    text="Cada asignatura es un pequeño mundo. Crea la primera."
+                    title="Sin asignaturas"
+                    text="Añade una asignatura para organizar sus temas y apuntes."
                     action="Nueva asignatura"
                     onClick={() => make("course", null)}
                   />
@@ -2212,8 +2510,7 @@ function App() {
               <div className="dashboard-bottom">
                 <section className="recent-section">
                   <div className="section-heading">
-                    <h2>Para seguir donde lo dejaste</h2>
-                    <span className="section-caption">Recientes</span>
+                    <h2>Apuntes recientes</h2>
                   </div>
                   <div className="recent-list">
                     {notes.length ? (
@@ -2229,68 +2526,46 @@ function App() {
                           />
                         ))
                     ) : (
-                      <Empty
-                        title="Aquí aparecerán tus apuntes"
-                        text="Cada idea que guardes tendrá un lugar al que volver."
-                      />
+                      <p className="inline-empty">No hay apuntes todavía.</p>
                     )}
                   </div>
                 </section>
-                <section className="next-exam">
+                <section className="exam-overview">
                   <div className="section-heading">
-                    <h2>En el horizonte</h2>
-                    <CalendarDays size={17} />
+                    <h2>
+                      Exámenes pendientes{" "}
+                      <span className="count-pill">{pending.length}</span>
+                    </h2>
+                    <button
+                      className="text-button"
+                      onClick={() => make("exam", null)}
+                    >
+                      <Plus size={14} />
+                      Añadir
+                    </button>
                   </div>
-                  {pending.length ? (
-                    <>
-                      <span className="next-exam-date">
-                        {pending[0].due_date
-                          ? dateLabel(pending[0].due_date + "T12:00:00")
-                          : "Sin fecha todavía"}
-                      </span>
-                      <h3>{pending[0].title}</h3>
-                      <p>
-                        {pending[0].parent_id
-                          ? fullPath(pending[0], nodes)
-                              .split(" / ")
-                              .slice(0, -1)
-                              .join(" / ")
-                          : "Tu próximo examen"}
+                  <div className="recent-list">
+                    {pending.length ? (
+                      pending
+                        .slice(0, 3)
+                        .map((n) => (
+                          <ItemRow
+                            key={n.id}
+                            item={n}
+                            nodes={nodes}
+                            navigate={navigate}
+                            pin={pin}
+                            toggleDone={toggleDone}
+                          />
+                        ))
+                    ) : (
+                      <p className="inline-empty">
+                        No hay exámenes pendientes.
                       </p>
-                      <button
-                        className="text-button"
-                        onClick={() => navigate("node:" + pending[0].id)}
-                      >
-                        Preparar examen
-                        <ArrowRight size={15} />
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <span className="exam-doodle">
-                        <CalendarDays size={25} strokeWidth={1.4} />
-                        <Check size={16} />
-                      </span>
-                      <h3>Un paso por delante.</h3>
-                      <p>Añade tus exámenes y prepara cada uno con tiempo.</p>
-                      <button
-                        className="text-button"
-                        onClick={() => make("exam", null)}
-                      >
-                        <Plus size={15} />
-                        Añadir un examen
-                      </button>
-                    </>
-                  )}
+                    )}
+                  </div>
                 </section>
               </div>
-              <footer className="page-footer">
-                <span>Un lugar para aprender. Y para recordar.</span>
-                <span>
-                  <LockKeyhole size={12} />
-                  Tu Aula, solo tuya.
-                </span>
-              </footer>
             </>
           )}
           {route === "courses" && (
@@ -2298,10 +2573,8 @@ function App() {
               <div className="page-heading">
                 <div>
                   <div className="eyebrow">HES-SO · GENÈVE</div>
-                  <h1>Cada clase, su lugar.</h1>
-                  <p>
-                    Tus {courses.length} asignaturas, organizadas a tu manera.
-                  </p>
+                  <h1>Asignaturas</h1>
+                  <p>{courses.length} asignaturas · Curso 2026–2027</p>
                 </div>
                 <button
                   className="button primary"
@@ -2426,8 +2699,8 @@ function App() {
               {!children.length && (
                 <Empty
                   icon={Folder}
-                  title="Hay espacio para lo que viene"
-                  text="Crea carpetas para organizar cada tema, o empieza con un apunte."
+                  title="Carpeta vacía"
+                  text="Añade apuntes o crea una subcarpeta."
                   action="Crear mi primer apunte"
                   onClick={() => make("note")}
                 />
@@ -2466,7 +2739,7 @@ function App() {
               <div className="page-heading">
                 <div>
                   <div className="eyebrow">A MANO, SIEMPRE</div>
-                  <h1>Lo que quieres tener cerca.</h1>
+                  <h1>Favoritos</h1>
                   <p>
                     Tus asignaturas y apuntes favoritos, sin tener que
                     buscarlos.
@@ -2500,7 +2773,7 @@ function App() {
               <div className="page-heading">
                 <div>
                   <div className="eyebrow">UN PASO POR DELANTE</div>
-                  <h1>Preparar. Repasar. Respirar.</h1>
+                  <h1>Exámenes</h1>
                   <p>
                     Cada examen, con sus apuntes y su fecha en un mismo lugar.
                   </p>
@@ -2576,7 +2849,7 @@ function App() {
               <div className="page-heading">
                 <div>
                   <div className="eyebrow">UN HILO PARA RECORDAR</div>
-                  <h1>Tu curso deja huella.</h1>
+                  <h1>Memoria</h1>
                   <p>Lo que creas y cambias, en un registro de actividad.</p>
                 </div>
                 <span className="badge sage">
@@ -2587,11 +2860,35 @@ function App() {
               <div className="memory-notice">
                 <BrainCircuit size={20} />
                 <p>
-                  Esta memoria registra el trabajo en Aula. Las acciones de tu
-                  GPT conectado también aparecen aquí; las conversaciones de
-                  ChatGPT no se importan automáticamente.
+                  Este registro conserva las acciones realizadas en Aula. Guarda
+                  las preguntas y respuestas que quieras recuperar como apuntes.
+                  Las conversaciones de ChatGPT no se registran automáticamente
+                  ni pueden leerse desde este navegador.
                 </p>
               </div>
+              <section className="context-tools">
+                <div>
+                  <h2>Contexto para futuras conversaciones</h2>
+                  <p>
+                    Descarga tus asignaturas, documentos, horario y registro en
+                    un archivo que puedas compartir con ChatGPT.
+                  </p>
+                </div>
+                <div className="context-actions">
+                  <button className="button secondary" onClick={exportContext}>
+                    <ArrowDownToLine size={15} />
+                    Exportar contexto
+                  </button>
+                  <button
+                    className="button secondary"
+                    onClick={() => make("note", null)}
+                  >
+                    <Plus size={15} />
+                    Guardar una conversación
+                  </button>
+                </div>
+              </section>
+              <h2 className="activity-heading">Registro de actividad</h2>
               <div className="timeline">
                 {activity.map((a) => {
                   const Icon =
@@ -2654,6 +2951,22 @@ function App() {
               )}
             </>
           )}
+          {route === "schedule" && (
+            <SchedulePage
+              nodes={nodes}
+              schedule={state.schedule || {}}
+              onSave={async (value) => {
+                await api("/schedule", "POST", value);
+                await refresh();
+                toast("Horario guardado");
+              }}
+              onImport={async (value) => {
+                await api("/schedule/import", "POST", value);
+                await refresh();
+                toast("Horario importado");
+              }}
+            />
+          )}
           {route === "settings" && (
             <SettingsPage
               state={state}
@@ -2669,6 +2982,7 @@ function App() {
           nodes={nodes}
           initialParent={create.parent}
           initialKind={create.kind}
+          schedule={state.schedule || {}}
           onClose={() => setCreate(null)}
           onCreated={async (item) => {
             setCreate(null);
@@ -2684,14 +2998,11 @@ function App() {
           onClose={() => setIntegration(false)}
           refresh={refresh}
           toast={toast}
+          onExport={exportContext}
         />
       )}
       {rename && (
-        <Modal
-          title="Un nombre que encaje"
-          subtitle="Renombra este apartado sin cambiar lo que contiene."
-          onClose={() => setRename(null)}
-        >
+        <Modal title="Renombrar apartado" onClose={() => setRename(null)}>
           <form onSubmit={doRename}>
             <label>
               Nombre

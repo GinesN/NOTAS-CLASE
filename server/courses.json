@@ -43,5 +43,20 @@
     "title": "International Organizations",
     "official": "International Organizations",
     "color": "lavender"
+  },
+  {
+    "title": "Global HR Management",
+    "official": "Global HR Management",
+    "color": "peach"
+  },
+  {
+    "title": "Design Thinking for AI and Digital Innovation",
+    "official": "Design Thinking for AI and Digital Innovation",
+    "color": "lavender"
+  },
+  {
+    "title": "English Communication 3",
+    "official": "English Communication 3",
+    "color": "blue"
   }
 ]

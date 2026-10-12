@@ -1,23 +1,34 @@
 import { test, expect } from "@playwright/test";
 
-test("un apunte guardado desde fuera aparece al volver a la web", async ({ page, request }) => {
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Hola, Ginés.' })).toBeVisible();
-  const response = await request.post('/api/nodes', { data: { kind: 'note', title: 'Apunte recién guardado desde Codex', content: 'Una idea nueva' } });
+test("un apunte guardado desde fuera aparece al volver a la web", async ({
+  page,
+  request,
+}) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Mi espacio" })).toBeVisible();
+  const response = await request.post("/api/nodes", {
+    data: {
+      kind: "note",
+      title: "Apunte recién guardado desde Codex",
+      content: "Una idea nueva",
+    },
+  });
   const item = await response.json();
-  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-  await expect(page.locator('.recent-list')).toContainText('Apunte recién guardado desde Codex');
-  await request.delete('/api/nodes/' + item.id);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.locator(".recent-section .recent-list")).toContainText(
+    "Apunte recién guardado desde Codex",
+  );
+  await request.delete("/api/nodes/" + item.id);
 });
 
-test("las nueve asignaturas, navegación y móvil sin desbordamiento", async ({
+test("las asignaturas, navegación y móvil sin desbordamiento", async ({
   page,
 }) => {
   await page.goto("/#courses");
   await expect(
-    page.getByRole("heading", { name: "Cada clase, su lugar." }),
+    page.getByRole("heading", { name: "Asignaturas" }),
   ).toBeVisible();
-  await expect(page.locator(".course-card")).toHaveCount(9);
+  await expect(page.locator(".course-card")).toHaveCount(12);
   await page
     .locator(".course-card-link")
     .filter({ hasText: "International Trade" })
@@ -29,7 +40,7 @@ test("las nueve asignaturas, navegación y móvil sin desbordamiento", async ({
   await page.getByRole("button", { name: "Tema 1 1 elementos" }).click();
   await page.getByRole("button", { name: "Apuntes 0 elementos" }).click();
   await expect(
-    page.getByRole("heading", { name: "Hay espacio para lo que viene" }),
+    page.getByRole("heading", { name: "Carpeta vacía" }),
   ).toBeVisible();
   expect(
     await page.evaluate(
@@ -98,7 +109,9 @@ test("crear un examen, marcarlo completo y exportar una copia", async ({
     .getByRole("textbox", { name: "Contenido del apunte" })
     .fill("Repasar los temas 1 y 2.");
   await page.getByRole("button", { name: "Guardar cambios" }).click();
-  await expect(page.locator('.markdown')).toContainText('Repasar los temas 1 y 2.');
+  await expect(page.locator(".markdown")).toContainText(
+    "Repasar los temas 1 y 2.",
+  );
   await page.goto("/#exams");
   await page
     .getByRole("button", { name: "Completar Examen de prueba" })
