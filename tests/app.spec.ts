@@ -98,6 +98,7 @@ test("crear un examen, marcarlo completo y exportar una copia", async ({
     .getByRole("textbox", { name: "Contenido del apunte" })
     .fill("Repasar los temas 1 y 2.");
   await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(page.locator('.markdown')).toContainText('Repasar los temas 1 y 2.');
   await page.goto("/#exams");
   await page
     .getByRole("button", { name: "Completar Examen de prueba" })
