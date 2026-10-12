@@ -1,0 +1,27 @@
+# Aula
+
+El usuario quiere un espacio personal para sus nueve asignaturas de HES-SO, con carpetas anidadas, apuntes, exámenes y memoria de actividad. Prefiere entrar sin contraseña mientras use este entorno aislado. El repositorio puede ser privado; no cambies su visibilidad.
+
+El usuario ha solicitado también GitHub Pages. `npm run build:pages` genera una versión independiente en `dist-pages`, con datos privados en IndexedDB del navegador. `npm run test:pages` verifica ese modo sin backend. `python3 scripts/publish-pages.py --push` publica solo los archivos estáticos en `gh-pages`. No subas `.data`, apuntes personales, copias o claves; no cambies la visibilidad del repositorio. Pages requiere activar la rama gh-pages en Settings → Pages.
+
+El almacenamiento de Pages y la SQLite del entorno son independientes. Guardar con `server/manage.py` modifica la SQLite, y no escribe en los navegadores del usuario. Para entregar apuntes destinados a Pages, prepara una copia JSON importable o proporciona el contenido para que el usuario lo pegue. Explica la ausencia de sincronización; no afirmes que la API de ChatGPT existe en Pages.
+
+## Preparar y arrancar
+
+- Usa el checkout existente. Cada tarea cloud está aislada; no crees un worktree salvo petición explícita del usuario.
+- Node.js 22.12+ (actual 24.19), Python 3.12+. `npm ci --cache /workspace/.cache/npm`; `npm run build`; `npm run dev`.
+- `dev` usa modo local sin contraseña, restringido a loopback. Para una web pública: contraseña, HTTPS, `AULA_PUBLIC_URL`, almacenamiento persistente y sin modo local. No expongas el modo local mediante un túnel.
+- Las instrucciones completas están en README.md. Pruebas: `npm test` y `npm run test:ui`. El navegador de pruebas usa `/usr/bin/chromium` o `AULA_CHROMIUM`.
+
+## Cuando el usuario pida guardar material de clase
+
+Usa los datos de Aula, no nuevos archivos de apuntes en el repositorio:
+
+1. Consulta `python3 server/manage.py list` para elegir la asignatura y las carpetas correctas. Conserva los nombres existentes. Pregunta por el destino solo si no puede inferirse.
+2. Prepara un JSON con `path` (array de carpetas empezando por la asignatura), `title`, `content` en Markdown, `kind` (`note` o `exam`) y un `request_id` único. No inventes material académico ni fechas de examen. No escribas por defecto sobre un documento existente.
+3. Pásalo por stdin a `python3 server/manage.py save`. Registra autor Codex; reutiliza el mismo request_id si reintentas exactamente la misma operación.
+4. Verifica el documento guardado y confirma título y ruta. La web se actualiza cuando vuelve a tener foco o en un máximo de 15 segundos si no hay un borrador sin guardar.
+
+`AULA_DATA_DIR` cambia la ubicación; por defecto se usa `.data/aula.sqlite3`. Nunca subas esta base de datos, copias personales, contraseñas, sesiones o claves a Git. Haz copia antes de importar o reemplazar datos. Las pruebas deben usar una base temporal.
+
+La conexión desde una conversación ordinaria de ChatGPT requiere alojar la web con HTTPS y configurar las acciones de un GPT personalizado. No afirmes que la cuenta está conectada solo porque exista la API. El registro de Memoria contiene operaciones de Aula, no todo el historial de ChatGPT.

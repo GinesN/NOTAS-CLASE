@@ -1,0 +1,47 @@
+[
+  {
+    "title": "International Relations",
+    "official": "15_HES-SO-GE_International Relations",
+    "color": "sage"
+  },
+  {
+    "title": "International Trade",
+    "official": "26_27-International Trade",
+    "color": "blue"
+  },
+  {
+    "title": "Financing and Valuation",
+    "official": "26_HES-SO_GE_Financing and Valuation",
+    "color": "yellow"
+  },
+  {
+    "title": "International Channel Management",
+    "official": "26_HES-SO_GE_International channel management",
+    "color": "peach"
+  },
+  {
+    "title": "Market Research Fundamentals",
+    "official": "26-27 HES-GE MARKET RESEARCH FUNDAMENTALS",
+    "color": "lavender"
+  },
+  {
+    "title": "International Supply Chain Management",
+    "official": "26-27_HES-SO_GE_IBM_INTERNATIONAL_SUPPLY_CHAIN_MANAGEMENT",
+    "color": "sage"
+  },
+  {
+    "title": "Management in the Age of AI",
+    "official": "26-27_HES-SO-GE_Management_in_the_age_of_AI",
+    "color": "blue"
+  },
+  {
+    "title": "International Organizational Behaviour",
+    "official": "International Organizational Behaviour 2026",
+    "color": "peach"
+  },
+  {
+    "title": "International Organizations",
+    "official": "International Organizations",
+    "color": "lavender"
+  }
+]

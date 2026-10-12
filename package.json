@@ -1,0 +1,40 @@
+{
+  "name": "notas-clase",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Aula: un espacio privado y portable para organizar tus clases",
+  "scripts": {
+    "dev": "python3 server/app.py --local",
+    "watch": "vite build --watch",
+    "build": "tsc --noEmit && vite build",
+    "build:pages": "tsc --noEmit && vite build --mode pages --base=/NOTAS-CLASE/ --outDir dist-pages",
+    "test:pages": "playwright test --config playwright.pages.config.ts",
+    "start": "python3 server/app.py",
+    "test": "python3 -m unittest discover -s tests -p 'test_*.py' -v",
+    "test:ui": "playwright test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GinesN/NOTAS-CLASE.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/GinesN/NOTAS-CLASE/issues"
+  },
+  "homepage": "https://github.com/GinesN/NOTAS-CLASE#readme",
+  "dependencies": {
+    "lucide-react": "^1.55.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  }
+}
