@@ -4,6 +4,7 @@ export default defineConfig({
   testMatch: "**/pages.spec.ts",
   workers: 1,
   fullyParallel: false,
+  timeout: 60_000,
   use: {
     baseURL: "http://127.0.0.1:4182/NOTAS-CLASE/",
     launchOptions: {

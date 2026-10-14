@@ -1,0 +1,14 @@
+.git
+.data
+.venv
+.env*
+.portal.env
+node_modules
+dist
+dist-pages
+test-results
+playwright-report
+__pycache__
+*.pyc
+tests
+scratch

@@ -1,0 +1,3 @@
+{$AULA_DOMAIN} {
+    reverse_proxy aula:4173
+}

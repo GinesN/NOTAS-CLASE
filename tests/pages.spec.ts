@@ -1,6 +1,19 @@
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
+test("Emails en Pages no solicita una API ni ofrece una conexión inexistente", async ({ page }) => {
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/")) requests.push(request.url());
+  });
+  await page.goto("./#emails");
+  await expect(page.getByRole("heading", { name: "Emails", exact: true })).toBeVisible();
+  await expect(page.locator(".mail-setup")).toContainText("necesita la versión con servidor");
+  await expect(page.getByRole("button", { name: "Conectar con Microsoft" })).toHaveCount(0);
+  expect(requests).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test("horario importado conserva datos anteriores y propone una hora de examen editable", async ({
   page,
 }) => {

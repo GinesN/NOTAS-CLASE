@@ -2246,3 +2246,36 @@ input[type="checkbox"] {
     padding: 8px 10px;
   }
 }
+
+.mail-setup { border: 1px solid #e2e6e2; padding: 24px; border-radius: 6px; max-width: 760px; }
+.mail-setup h2 { font-family: inherit; font-size: 18px; margin: 12px 0; }
+.mail-setup p { line-height: 1.7; margin: 12px 0; }
+.mail-note { padding: 12px; background: #f5f5ef; border: 1px solid #e3e3d7; border-radius: 4px; line-height: 1.6; }
+.mail-connection { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 16px; font-size: 12px; }
+.mail-toolbar { display: flex; gap: 10px; margin: 20px 0; flex-wrap: wrap; }
+.mail-toolbar input { flex: 1 1 200px; }
+.mail-toolbar select { flex: 0 1 260px; min-width: 0; }
+.mail-toolbar input, .mail-toolbar select { border: 1px solid #dce1dc; border-radius: 4px; padding: 10px; background: white; font: inherit; max-width: 100%; }
+.mail-list { border-top: 1px solid #e2e6e2; }
+.mail-row { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(200px, 1fr); width: 100%; gap: 25px; padding: 18px 10px; text-align: left; background: transparent; border: 0; border-bottom: 1px solid #e2e6e2; cursor: pointer; color: inherit; }
+.mail-row:hover { background: #f6f8f5; }
+.mail-subject > strong { display: block; font-size: 14px; font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; }
+.mail-row.unread .mail-subject > strong { font-weight: 650; }
+.mail-subject > span { display: block; font-size: 11px; margin-top: 6px; color: #637064; overflow-wrap: anywhere; }
+.mail-row > p { line-height: 1.7; margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.mail-tags { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 10px; font-size: 10px; }
+.mail-tags > span { padding: 3px 7px; border: 1px solid #dce1dc; border-radius: 4px; }
+.mail-priority.high { color: #8c351d; background: #fff2ed; border-color: #edcec4; }
+.mail-empty { padding: 25px 0; color: #637064; }
+.mail-detail { position: fixed; inset: 0; z-index: 150; background: #14251c88; padding: 25px; overflow-y: auto; }
+.mail-detail-inner { max-width: 860px; margin: 0 auto; background: white; padding: 25px; border-radius: 6px; overflow-wrap: anywhere; }
+.mail-detail-inner h2 { font-family: inherit; font-size: 22px; margin: 20px 0 12px; }
+.mail-detail-inner > p { line-height: 1.7; margin-bottom: 16px; }
+.mail-summary { padding: 14px; background: #f4f6f2; }
+.mail-body { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.8; padding: 20px 0; }
+@media (max-width: 650px) {
+  .mail-row { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .mail-toolbar input, .mail-toolbar select { flex: 1 1 100%; width: 100%; }
+  .mail-detail { padding: 12px; }
+  .mail-detail-inner, .mail-setup { padding: 18px; }
+}

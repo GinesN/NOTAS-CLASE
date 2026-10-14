@@ -10,7 +10,7 @@ GitHub Pages sirve una versión que guarda tus datos en **IndexedDB, dentro de t
 
 Los datos **no se sincronizan** entre navegadores u ordenadores. Para cambiar de ordenador, descarga una copia en Ajustes e impórtala en el nuevo navegador. Borrar el almacenamiento del navegador borra esa copia de tus datos. La base SQLite del entorno y la base del navegador son instalaciones separadas; puedes trasladar documentos entre ellas usando la misma copia JSON.
 
-Pages no puede ejecutar el servidor Python ni recibir escrituras desde ChatGPT o Codex. La sección ChatGPT permite copiar el contexto; el guardado automático necesita la versión con servidor que se documenta más abajo.
+Pages no puede ejecutar el servidor Python ni recibir escrituras desde ChatGPT o Codex. La sección ChatGPT permite copiar el contexto; el guardado automático y el apartado Emails necesitan el portal con servidor. La [guía del portal privado](docs/portal.md) incluye Docker, HTTPS, Outlook personal y el GPT personalizado.
 
 Construir y publicar los archivos estáticos:
 
@@ -36,10 +36,13 @@ En **Settings → Pages**, selecciona **Deploy from a branch**, rama **gh-pages*
 
 ## Empezar dentro del entorno
 
-Necesitas Node.js 22.12+ (probado con 24.19), npm y Python 3.12+. El servidor no requiere paquetes de Python ni una base de datos externa.
+Necesitas Node.js 22.12+ (probado con 24.19), npm y Python 3.12+. SQLite está incluida en Python; las credenciales de Outlook usan la dependencia `cryptography` fijada en `requirements.txt`.
 
 ```sh
 cd /workspace/NOTAS-CLASE
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements.txt
 npm ci --cache /workspace/.cache/npm
 npm run build
 npm run dev
@@ -162,7 +165,9 @@ La sección **ChatGPT** explica los pasos y permite copiar el índice de asignat
 4. Copia desde Aula las instrucciones preparadas para el GPT. La URL de privacidad es `/privacy`.
 5. Prueba «Guarda este resumen en International Trade → Temas → Tema 1 → Apuntes» y confirma que aparece en Aula y en Memoria.
 
-La API permite leer documentos y crear apuntes/exámenes. No puede eliminar ni modificar documentos existentes. No se llama a OpenAI desde Aula y no necesitas una API key de OpenAI. Puedes revocar la clave desde Aula. Renovarla invalida la anterior.
+La API permite leer documentos, horario y actividad y crear apuntes/exámenes. No puede eliminar ni modificar documentos existentes, ni leer Outlook. Conectar el GPT no necesita una API key de OpenAI. La traducción de correos del portal sí utiliza una clave y facturación de la API, independiente de ChatGPT. Puedes revocar la clave del GPT desde Aula. Renovarla invalida la anterior.
+
+El GPT puede guardar las preguntas y respuestas de estudio en la asignatura correspondiente usando las [instrucciones preparadas](docs/gpt-instructions.md). Las acciones pueden pedir confirmación dentro de ChatGPT.
 
 El historial registra operaciones, no conversaciones completas ni una memoria automática de toda tu cuenta de ChatGPT.
 

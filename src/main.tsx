@@ -50,6 +50,7 @@ import {
   Link2,
   Copy,
   RotateCcw,
+  Mail,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import "./styles.css";
@@ -57,6 +58,8 @@ import "./styles.css";
 import type { Kind, Item, Activity, State, Auth, ClassSchedule } from "./model";
 import { weekdays, courseFor, scheduleLabel } from "./schedule";
 import { browserMode, browserApi } from "./browser-store";
+import { InboxPage } from "./inbox";
+import gptInstructions from "../docs/gpt-instructions.md?raw";
 
 const labels: Record<Kind, string> = {
   course: "Asignatura",
@@ -1181,8 +1184,7 @@ function Integration({
   const isPublic =
     window.location.protocol === "https:" &&
     !["localhost", "127.0.0.1"].includes(window.location.hostname);
-  const instructions =
-    "Eres mi asistente de estudio conectado a Aula. Lee readStudySpace antes de guardar para encontrar la asignatura y la carpeta correctas. Conserva los nombres existentes. Si el destino no está claro, pregúntame. Usa saveStudyDocument para guardar apuntes y exámenes en Markdown; no inventes fechas ni contenidos. La ruta empieza por la asignatura y termina en una carpeta. Inventa un request_id único para cada documento y reutilízalo solamente al reintentar la misma operación. Después confirma el título y la ruta devueltos por Aula. Usa el historial como registro de trabajo, sin asumir que contiene todos los detalles de una conversación.";
+  const instructions = gptInstructions;
   async function copy(text: string, message = "Copiado") {
     try {
       await navigator.clipboard.writeText(text);
@@ -1294,8 +1296,8 @@ function Integration({
   return (
     <Modal
       wide
-      title="Tus ideas, conectadas."
-      subtitle="Trabaja con ChatGPT y guarda cada cosa en su lugar."
+      title="GPT de estudio"
+      subtitle="Consulta tus apuntes y guarda preguntas y respuestas por asignatura."
       onClose={onClose}
     >
       <div className="integration-banner">
@@ -1936,12 +1938,11 @@ function SettingsPage({
                 </>
               ) : (
                 <>
-                  No hay publicidad, rastreadores ni envíos automáticos a una
-                  IA. El modo de uso actual funciona dentro del entorno, sin
-                  contraseña. Para un despliegue público, activa el acceso
-                  privado con contraseña. Publicar el entorno de desarrollo
-                  conserva una base de trabajo; para entrar desde cualquier
-                  ordenador necesitas desplegar la web.
+                  No hay publicidad ni rastreadores. Si conectas Outlook y
+                  configuras la traducción, el texto de los correos importados
+                  se envía a la API de OpenAI para traducirlo y resumirlo.
+                  El portal público necesita acceso privado y HTTPS.
+                  Los apuntes se guardan en tu servidor.
                 </>
               )}
             </p>
@@ -1973,7 +1974,7 @@ function SettingsPage({
 function App() {
   const [auth, setAuth] = useState<Auth | null>(null);
   const [state, setState] = useState<State | null>(null);
-  const [route, setRoute] = useState(window.location.hash.slice(1) || "home");
+  const [route, setRoute] = useState(window.location.hash.slice(1).split("?")[0] || "home");
   const [create, setCreate] = useState<{
     kind: Kind;
     parent: string | null;
@@ -2020,7 +2021,7 @@ function App() {
   }, [auth?.authenticated]);
   useEffect(() => {
     const hash = () => {
-      const next = window.location.hash.slice(1) || "home";
+      const next = window.location.hash.slice(1).split("?")[0] || "home";
       if (
         dirtyRef.current &&
         next !== route &&
@@ -2245,6 +2246,7 @@ function App() {
   const nav = [
     { id: "home", label: "Mi espacio", icon: LibraryBig },
     { id: "courses", label: "Asignaturas", icon: BookOpen },
+    { id: "emails", label: "Emails", icon: Mail },
     { id: "favorites", label: "Favoritos", icon: Star },
     { id: "exams", label: "Exámenes", icon: CalendarDays },
     { id: "schedule", label: "Horario", icon: Clock3 },
@@ -2967,6 +2969,7 @@ function App() {
               }}
             />
           )}
+          {route === "emails" && <InboxPage courses={courses.map((c) => c.title)} />}
           {route === "settings" && (
             <SettingsPage
               state={state}

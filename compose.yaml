@@ -1,0 +1,39 @@
+services:
+  aula:
+    build: .
+    restart: unless-stopped
+    env_file: .portal.env
+    environment:
+      AULA_HOST: 0.0.0.0
+      AULA_PORT: 4173
+      AULA_DATA_DIR: /data
+      AULA_LOCAL_MODE: "0"
+    volumes:
+      - aula-data:/data
+    networks:
+      - backend
+    # Only the HTTPS reverse proxy can reach the app; no published backend port.
+  https:
+    image: caddy:2.10.2
+    restart: unless-stopped
+    environment:
+      AULA_DOMAIN: ${AULA_DOMAIN:?Set AULA_DOMAIN in .portal.env and use --env-file .portal.env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - backend
+    depends_on:
+      aula:
+        condition: service_healthy
+volumes:
+  aula-data:
+  caddy-data:
+  caddy-config:
+networks:
+  backend:
